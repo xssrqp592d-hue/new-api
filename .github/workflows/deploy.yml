@@ -1,4 +1,4 @@
-name: Build and Deploy
+ name: Build and Deploy
   on:
     workflow_dispatch:
     push:
@@ -23,19 +23,10 @@ name: Build and Deploy
 
         - name: Build backend
           run: |
-            CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
-              -ldflags "-s -w" -o new-api-bin .
+            CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "-s -w" -o new-api-bin .
 
-        - name: Deploy
-          uses: appleboy/ssh-action@v1.0.3
-          with:
-            host: ${{ secrets.SERVER_HOST }}
-            username: ${{ secrets.SERVER_USER }}
-            key: ${{ secrets.SERVER_SSH_KEY }}
-            script: |
-              mkdir -p /opt/new-api/data
-              docker stop new-api 2>/dev/null || true
-              docker rm new-api 2>/dev/null || true- uses: appleboy/scp-action@v0.1.7
+        - name: Copy binary to server
+          uses: appleboy/scp-action@v0.1.7
           with:
             host: ${{ secrets.SERVER_HOST }}
             username: ${{ secrets.SERVER_USER }}
@@ -50,6 +41,9 @@ name: Build and Deploy
             username: ${{ secrets.SERVER_USER }}
             key: ${{ secrets.SERVER_SSH_KEY }}
             script: |
+              mkdir -p /opt/new-api/data
+              docker stop new-api 2>/dev/null || true
+              docker rm new-api 2>/dev/null || true
               chmod +x /opt/new-api/new-api-bin
               docker run --name new-api -d --restart always \
                 -p 3001:3000 \
