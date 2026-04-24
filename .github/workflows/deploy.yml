@@ -1,1 +1,60 @@
+name: Build and Deploy
+  on:
+    workflow_dispatch:
+    push:
+      branches: [main]
 
+  jobs:
+    build:
+      runs-on: ubuntu-latest
+      steps:
+        - uses: actions/checkout@v4
+
+        - uses: oven-sh/setup-bun@v2
+
+        - name: Build frontend
+          working-directory: web
+          run: |
+            bun installDISABLE_ESLINT_PLUGIN=true VITE_REACT_APP_VERSION=1.0.0 bun run build
+
+        - uses: actions/setup-go@v5
+          with:
+            go-version: '1.23'
+
+        - name: Build backend
+          run: |
+            CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+              -ldflags "-s -w" -o new-api-bin .
+
+        - name: Deploy
+          uses: appleboy/ssh-action@v1.0.3
+          with:
+            host: ${{ secrets.SERVER_HOST }}
+            username: ${{ secrets.SERVER_USER }}
+            key: ${{ secrets.SERVER_SSH_KEY }}
+            script: |
+              mkdir -p /opt/new-api/data
+              docker stop new-api 2>/dev/null || true
+              docker rm new-api 2>/dev/null || true- uses: appleboy/scp-action@v0.1.7
+          with:
+            host: ${{ secrets.SERVER_HOST }}
+            username: ${{ secrets.SERVER_USER }}
+            key: ${{ secrets.SERVER_SSH_KEY }}
+            source: "new-api-bin"
+            target: "/opt/new-api/"
+
+        - name: Start service
+          uses: appleboy/ssh-action@v1.0.3
+          with:
+            host: ${{ secrets.SERVER_HOST }}
+            username: ${{ secrets.SERVER_USER }}
+            key: ${{ secrets.SERVER_SSH_KEY }}
+            script: |
+              chmod +x /opt/new-api/new-api-bin
+              docker run --name new-api -d --restart always \
+                -p 3001:3000 \
+                -e TZ=Asia/Shanghai \
+                -e SESSION_SECRET=ec071f00db9bf252d483b2ec81f6bda12aadcdd6839cf899b88a7d7e0cd83ab3 \
+                -v /opt/new-api/data:/data \
+                -v /opt/new-api/new-api-bin:/new-api \
+                debian:bookworm-slim /new-api
